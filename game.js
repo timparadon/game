@@ -23,6 +23,9 @@ function socialDefaults(state){
  state.bonds=sects.map((_,i)=>Math.max(0,Math.min(100,Number.isFinite(state.bonds?.[i])?state.bonds[i]:0)));
  const bag=state.bag;
  state.bag=Object.fromEntries(Object.keys(items).map(id=>[id,Number.isSafeInteger(bag?.[id])&&bag[id]>=0?Math.min(999,bag[id]):0]));
+ state.weapons=Array.isArray(state.weapons)?[...new Set(['wooden',...state.weapons.filter(id=>Object.hasOwn(weapons,id))])]:['wooden'];
+ state.equipped=state.weapons.includes(state.equipped)?state.equipped:'wooden';
+ state.grudges=Object.fromEntries(disciples.map(n=>[n.id,Number.isFinite(state.grudges?.[n.id])?Math.max(0,Math.min(100,state.grudges[n.id])):0]));
  return state;
 }
 const items={
@@ -41,23 +44,25 @@ function act(type){if(s.dead)return;const p=places[s.place];let text='';
  if(type==='study'){s.wisdom+=roll(3,6);s.exp+=8;text='เจ้าอ่านคัมภีร์และสนทนาธรรม ปัญญาเพิ่มขึ้น พร้อมค่าฝึกฝน 8';}
  if(type==='work'){let gain=roll(18,30)+(p.money||0);s.money+=gain;text=`เจ้ารับงานคุ้มกันและช่วยชาวบ้าน ได้รับ ${gain} เหรียญ`;}
  if(type==='rest'){let gain=roll(20,35)+(p.heal||0);s.hp=Math.min(100,s.hp+gain);text=`เจ้าพักฟื้นและปรุงยาสมุนไพร ฟื้นพลังชีวิต ${gain} หน่วย (สูงสุด 100)`;}
- if(type==='adventure'){const chance=Math.min(.9,.45+s.power/180+s.realm*.04);if(Math.random()<chance){let gain=roll(20,45)+(p.loot||0);s.money+=gain;s.fame+=roll(3,7);s.exp+=18;s.hp-=roll(5,12);const item=Object.keys(items)[roll(0,2)];s.bag[item]=Math.min(999,s.bag[item]+1);text=`เจ้าพิชิตอันตราย พบสมบัติ ${gain} เหรียญ ได้ชื่อเสียง ค่าฝึกฝน 18 และ${items[item].name} 1 ชิ้น`;}else{s.hp-=roll(18,30);s.exp+=8;text='เจ้าพบศัตรูที่แข็งแกร่งและบาดเจ็บกลับมา แต่ได้รับประสบการณ์ฝึกฝน 8';}}
+ if(type==='adventure'){const chance=Math.min(.9,.45+effectivePower()/180+s.realm*.04);if(Math.random()<chance){let gain=roll(20,45)+(p.loot||0);s.money+=gain;s.fame+=roll(3,7);s.exp+=18;s.hp-=roll(5,12);const item=Object.keys(items)[roll(0,2)];s.bag[item]=Math.min(999,s.bag[item]+1);text=`เจ้าพิชิตอันตราย พบสมบัติ ${gain} เหรียญ ได้ชื่อเสียง ค่าฝึกฝน 18 และ${items[item].name} 1 ชิ้น`;}else{s.hp-=roll(18,30);s.exp+=8;text='เจ้าพบศัตรูที่แข็งแกร่งและบาดเจ็บกลับมา แต่ได้รับประสบการณ์ฝึกฝน 8';}}
  if(type==='break'){if(s.realm>=5||s.exp<thresholds[s.realm]||s.money<20)return;const chance=Math.min(.95,.6+s.wisdom/150);s.money-=20;if(Math.random()<chance){s.exp-=thresholds[s.realm];s.realm++;s.power+=15;s.fame+=10;text=`ทะลวงสำเร็จ! เจ้าก้าวสู่ขั้น${realms[s.realm]} พลังยุทธ์ +15 ชื่อเสียง +10`;}else{s.hp-=15;s.wisdom+=3;text='ลมปราณติดขัด ทะลวงไม่สำเร็จ เสียพลังชีวิต 15 แต่ปัญญา +3 และยังคงค่าฝึกฝนไว้';}}
  if(!text)return;
  const bonusAction=['train','study','rest','work'];
  if(s.sect!==null&&type===bonusAction[s.sect]){const sect=sects[s.sect],gain=sect.amount+rank()*2;s[sect.stat]+=gain;s.hp=Math.min(100,s.hp);text+=` · วิชาสำนักเสริม${gain} หน่วย`;}
- finish(text);
+ finish(text,type);
 }
-function finish(text){s.age++;s.hp=Math.max(0,s.hp);record(text);if(s.age>=80||s.hp<=0){s.dead=true;record(s.hp<=0?'เจ้าสิ้นแรงลงกลางเส้นทางยุทธภพ ตำนานชีวิตได้ปิดฉากลง':'ในวัย 80 ปี เจ้าล้างมือในอ่างทองคำ ทิ้งตำนานให้คนรุ่นหลัง');}save();render();}
-function travel(i){if(s.dead||s.place===i)return;s.place=i;finish(`เจ้าเดินทางสู่${places[i].name} เริ่มต้นบทใหม่ในแดน${places[i].dir}`);}
+function finish(text,effect='social'){s.age++;s.hp=Math.max(0,s.hp);record(text);if(s.age>=80||s.hp<=0){s.dead=true;record(s.hp<=0?'เจ้าสิ้นแรงลงกลางเส้นทางยุทธภพ ตำนานชีวิตได้ปิดฉากลง':'ในวัย 80 ปี เจ้าล้างมือในอ่างทองคำ ทิ้งตำนานให้คนรุ่นหลัง');}save();render();animateAction(effect,text);}
+function travel(i){if(s.dead||!Number.isInteger(i)||!places[i]||s.place===i)return;s.place=i;finish(`เจ้าเดินทางสู่${places[i].name} เริ่มต้นบทใหม่ในแดน${places[i].dir}`,'travel');}
 function render(){const p=places[s.place];$('name').textContent=s.name;$('identity').textContent=s.dead?'ตำนานที่สิ้นสุดแล้ว':(s.sect===null?'จอมยุทธ์อิสระ':sects[s.sect].name+' · '+sectRanks[rank()])+' · '+p.dir;$('year').textContent=`ปีที่ ${s.age-15} · อายุ ${s.age} ปี`;$('realm').textContent=realms[s.realm];$('direction').textContent=p.dir+' / ยุทธภพสี่แดน';$('location').textContent=p.name;$('description').textContent=p.desc;
- $('stats').innerHTML=[['อายุ',s.age+' ปี'],['พลังชีวิต',s.hp+' / 100'],['พลังยุทธ์',s.power],['ปัญญา',s.wisdom],['เงิน',s.money+' เหรียญ'],['ชื่อเสียง',s.fame]].map(([k,v])=>`<div class="stat"><span>${k}</span><strong>${v}</strong></div>`).join('');
+ $('stats').innerHTML=[['อายุ',s.age+' ปี'],['พลังชีวิต',s.hp+' / 100'],['พลังยุทธ์',`${s.power} + ${weapons[s.equipped].power}`],['อาวุธ',weapons[s.equipped].name],['ปัญญา',s.wisdom],['เงิน',s.money+' เหรียญ'],['ชื่อเสียง',s.fame]].map(([k,v])=>`<div class="stat"><span>${k}</span><strong>${v}</strong></div>`).join('');
  const need=thresholds[s.realm];$('progress').style.width=(need?Math.min(100,s.exp/need*100):100)+'%';$('training').textContent=need?`ค่าฝึกฝน ${s.exp} / ${need} · ทะลวงใช้ 20 เหรียญ`:'บรรลุจุดสูงสุดแห่งวิถียุทธ์';
  const actions=[['train','⚔','ฝึกวิชายุทธ์','เพิ่มพลังและค่าฝึกฝน · เสียพลังชีวิต 3–8'],['study','書','ศึกษาคัมภีร์','เพิ่มปัญญาและค่าฝึกฝน 8'],['work','◈','รับงานคุ้มกัน','ได้รับเงิน 18–30 เหรียญ'],['rest','茶','พักผ่อนรักษาตัว','ฟื้นชีวิต 20–35 หน่วย'],['adventure','山','ออกผจญภัย','เสี่ยงบาดเจ็บ · ได้สมบัติและชื่อเสียง'],['break','✧','ทะลวงขั้นพลัง',need?`ต้องการฝึกฝน ${need} และ 20 เหรียญ`:'บรรลุขั้นสูงสุดแล้ว']];
  $('actions').innerHTML=actions.map(([id,icon,title,desc])=>`<button class="action" data-action="${id}" ${s.dead||(id==='break'&&(!need||s.exp<need||s.money<20))?'disabled':''}><span class="icon">${icon}</span><span><strong>${title}</strong><small>${desc}</small></span></button>`).join('');
  $('map').innerHTML=places.map((p,i)=>`<button data-place="${i}" class="${i===s.place?'active':''}" ${s.dead||i===s.place?'disabled':''}>${p.icon} ${p.dir}<small>${p.name}</small><small>${i===s.place?'● เจ้าอยู่ที่นี่':p.bonus}</small></button>`).join('');
  renderSocial();
  renderInventory();
+ renderDisciples();
+ renderWeapons();
  renderCategory();
  $('log').replaceChildren(...s.log.map(e=>{let row=document.createElement('div');row.className='entry';let age=document.createElement('span');age.textContent=`อายุ ${e.age} ปี`;let text=document.createElement('p');text.textContent=e.text;row.append(age,text);return row;}));
 }
@@ -66,17 +71,17 @@ function social(type,i){
  const sect=sects[i];
  if(type==='leave'){
   if(s.sect===null||!confirm('ออกจากสำนัก? แต้มผลงานจะหายไป แต่ความสัมพันธ์ยังคงอยู่'))return;
-  const name=sects[s.sect].name;s.sect=null;s.merit=0;finish(`เจ้าลาออกจาก${name} กลับสู่วิถีจอมยุทธ์อิสระ`);return;
+  const name=sects[s.sect].name;s.sect=null;s.merit=0;finish(`เจ้าลาออกจาก${name} กลับสู่วิถีจอมยุทธ์อิสระ`,'travel');return;
  }
  if(i!==s.place)return;
  if(type==='join'){
   if(s.sect!==null||s.power<10||s.money<15)return;
-  s.sect=i;s.money-=15;s.merit=0;finish(`เจ้าฝากตัวเป็นศิษย์${sect.name} จ่ายค่าบำรุง 15 เหรียญ และเริ่มต้นวิถีใหม่`);return;
+  s.sect=i;s.money-=15;s.merit=0;finish(`เจ้าฝากตัวเป็นศิษย์${sect.name} จ่ายค่าบำรุง 15 เหรียญ และเริ่มต้นวิถีใหม่`,'join');return;
  }
  if(type==='mission'){
   if(s.sect!==i)return;
   const reward=20+rank()*5;s.merit+=10;s.money+=reward;s.exp+=12;s.fame+=2;s.hp-=8;
-  finish(`เจ้าทำภารกิจให้${sect.name} สำเร็จ ผลงาน +10 เงิน +${reward} ค่าฝึกฝน +12 ชื่อเสียง +2 พลังชีวิต -8 · ยศปัจจุบัน: ${sectRanks[rank()]}`);return;
+  finish(`เจ้าทำภารกิจให้${sect.name} สำเร็จ ผลงาน +10 เงิน +${reward} ค่าฝึกฝน +12 ชื่อเสียง +2 พลังชีวิต -8 · ยศปัจจุบัน: ${sectRanks[rank()]}`,'mission');return;
  }
  let gain=0,text='';
  if(type==='talk'){gain=12;s.wisdom+=2;text=`เจ้าสนทนากับ${sect.master} แลกเปลี่ยนเรื่องราวยุทธภพ ปัญญา +2`;}
@@ -85,7 +90,7 @@ function social(type,i){
  if(!gain)return;
  s.bonds[i]=Math.min(100,s.bonds[i]+gain);
  if(s.bonds[i]>=50){s.hp=Math.min(100,s.hp+5);text+=' · สหายช่วยดูแล ฟื้นพลังชีวิต 5';}
- finish(text+` · ความสนิท ${s.bonds[i]}/100 (${bondLabel(s.bonds[i])})`);
+ finish(text+` · ความสนิท ${s.bonds[i]}/100 (${bondLabel(s.bonds[i])})`,type);
 }
 function renderSocial(){
  const i=s.place,sect=sects[i],bond=s.bonds[i];
@@ -103,7 +108,7 @@ function itemAction(type,id){
   if(s.bag[id]<=0||(item.stat==='hp'&&s.hp>=100))return;
   s.bag[id]--;s[item.stat]+=item.gain;s.hp=Math.min(100,s.hp);text=`เจ้าใช้${item.name} · ${item.desc}`;
  }else return;
- record(text+' · ไม่เสียเวลา');save();render();
+ record(text+' · ไม่เสียเวลา');save();render();animateAction(type==='buy'?'buy':id,text);
 }
 function renderInventory(){
  $('inventory').innerHTML=`<h3>กระเป๋าเดินทาง <small>${Object.values(s.bag).reduce((a,b)=>a+b,0)} ชิ้น</small></h3><p class="inventory-note">ซื้อและใช้ไอเทมไม่เสียปี · ผจญภัยสำเร็จได้รับไอเทมสุ่ม 1 ชิ้น · เก็บได้ชนิดละ 999 ชิ้น</p><div class="item-grid">${Object.entries(items).map(([id,item])=>`<article class="social-card"><small>${item.icon} · มี ${s.bag[id]} ชิ้น</small><h3>${item.name}</h3><p>${item.desc}</p><button data-item="${id}" data-item-action="use" ${s.dead||s.bag[id]<=0||(item.stat==='hp'&&s.hp>=100)?'disabled':''}>${item.stat==='hp'&&s.hp>=100?'พลังชีวิตเต็มแล้ว':'ใช้ไอเทม'}</button><button data-item="${id}" data-item-action="buy" ${s.dead||s.money<item.price||s.bag[id]>=999?'disabled':''}>ซื้อ · ${item.price} เหรียญ</button></article>`).join('')}</div>`;
@@ -112,11 +117,13 @@ function renderCategory(){
  for(const id of ['daily','journey','sect','friends','bag'])$('panel-'+id).hidden=id!==category;
  for(const button of $('categories').querySelectorAll('[data-category]'))button.setAttribute('aria-pressed',String(button.dataset.category===category));
 }
+$('weapons').addEventListener('click',e=>{const b=e.target.closest('[data-weapon]');if(b&&!b.disabled)weaponAction(b.dataset.weaponAction,b.dataset.weapon);});
+$('disciples').addEventListener('click',e=>{const b=e.target.closest('[data-duel]');if(b&&!b.disabled)duel(b.dataset.duel,b.dataset.mode);});
 $('categories').addEventListener('click',e=>{const b=e.target.closest('[data-category]');if(b){category=b.dataset.category;renderCategory();}});
 $('inventory').addEventListener('click',e=>{const b=e.target.closest('[data-item]');if(b&&!b.disabled)itemAction(b.dataset.itemAction,b.dataset.item);});
 for(const id of ['sects','relations'])$(id).addEventListener('click',e=>{const b=e.target.closest('[data-social]');if(b&&!b.disabled)social(b.dataset.social,Number(b.dataset.person));});
 $('actions').addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(b)act(b.dataset.action);});$('map').addEventListener('click',e=>{const b=e.target.closest('[data-place]');if(b)travel(Number(b.dataset.place));});
 $('reset').onclick=()=>{if(confirm('เริ่มชีวิตใหม่? บันทึกชีวิตเดิมจะถูกแทนที่เมื่อออกเดินทาง'))$('intro').showModal();};
-$('nameform').onsubmit=e=>{e.preventDefault();s=fresh($('hero').value.trim());save();render();$('intro').close();};
+$('nameform').onsubmit=e=>{e.preventDefault();s=fresh($('hero').value.trim());$('battle-report').hidden=true;$('action-feedback').textContent='พร้อมออกเดินทาง';save();render();$('intro').close();};
 try{const old=JSON.parse(localStorage.getItem(KEY));if(old&&typeof old.name==='string'&&Number.isInteger(old.age)&&Array.isArray(old.log)&&places[old.place]&&realms[old.realm]&&['hp','power','wisdom','money','fame','exp'].every(k=>Number.isFinite(old[k])))s=socialDefaults(old);}catch{}
 if(!s){s=fresh();render();$('intro').showModal();}else render();
