@@ -26,6 +26,7 @@ function socialDefaults(state){
  state.weapons=Array.isArray(state.weapons)?[...new Set(['wooden',...state.weapons.filter(id=>Object.hasOwn(weapons,id))])]:['wooden'];
  state.equipped=state.weapons.includes(state.equipped)?state.equipped:'wooden';
  state.grudges=Object.fromEntries(disciples.map(n=>[n.id,Number.isFinite(state.grudges?.[n.id])?Math.max(0,Math.min(100,state.grudges[n.id])):0]));
+ state.site=Object.hasOwn(sites,state.site)?state.site:'town';
  return state;
 }
 const items={
@@ -52,7 +53,7 @@ function act(type){if(s.dead)return;const p=places[s.place];let text='';
  finish(text,type);
 }
 function finish(text,effect='social'){s.age++;s.hp=Math.max(0,s.hp);record(text);if(s.age>=80||s.hp<=0){s.dead=true;record(s.hp<=0?'เจ้าสิ้นแรงลงกลางเส้นทางยุทธภพ ตำนานชีวิตได้ปิดฉากลง':'ในวัย 80 ปี เจ้าล้างมือในอ่างทองคำ ทิ้งตำนานให้คนรุ่นหลัง');}save();render();animateAction(effect,text);}
-function travel(i){if(s.dead||!Number.isInteger(i)||!places[i]||s.place===i)return;s.place=i;finish(`เจ้าเดินทางสู่${places[i].name} เริ่มต้นบทใหม่ในแดน${places[i].dir}`,'travel');}
+function travel(i){if(s.dead||!Number.isInteger(i)||!places[i]||s.place===i)return;s.place=i;s.site='town';finish(`เจ้าเดินทางสู่${places[i].name} เริ่มต้นบทใหม่ในแดน${places[i].dir}`,'travel');}
 function render(){const p=places[s.place];$('name').textContent=s.name;$('identity').textContent=s.dead?'ตำนานที่สิ้นสุดแล้ว':(s.sect===null?'จอมยุทธ์อิสระ':sects[s.sect].name+' · '+sectRanks[rank()])+' · '+p.dir;$('year').textContent=`ปีที่ ${s.age-15} · อายุ ${s.age} ปี`;$('realm').textContent=realms[s.realm];$('direction').textContent=p.dir+' / ยุทธภพสี่แดน';$('location').textContent=p.name;$('description').textContent=p.desc;
  $('stats').innerHTML=[['อายุ',s.age+' ปี'],['พลังชีวิต',s.hp+' / 100'],['พลังยุทธ์',`${s.power} + ${weapons[s.equipped].power}`],['อาวุธ',weapons[s.equipped].name],['ปัญญา',s.wisdom],['เงิน',s.money+' เหรียญ'],['ชื่อเสียง',s.fame]].map(([k,v])=>`<div class="stat"><span>${k}</span><strong>${v}</strong></div>`).join('');
  const need=thresholds[s.realm];$('progress').style.width=(need?Math.min(100,s.exp/need*100):100)+'%';$('training').textContent=need?`ค่าฝึกฝน ${s.exp} / ${need} · ทะลวงใช้ 20 เหรียญ`:'บรรลุจุดสูงสุดแห่งวิถียุทธ์';
@@ -63,6 +64,7 @@ function render(){const p=places[s.place];$('name').textContent=s.name;$('identi
  renderInventory();
  renderDisciples();
  renderWeapons();
+ renderLocalMaps();
  renderCategory();
  $('log').replaceChildren(...s.log.map(e=>{let row=document.createElement('div');row.className='entry';let age=document.createElement('span');age.textContent=`อายุ ${e.age} ปี`;let text=document.createElement('p');text.textContent=e.text;row.append(age,text);return row;}));
 }
@@ -74,6 +76,7 @@ function social(type,i){
   const name=sects[s.sect].name;s.sect=null;s.merit=0;finish(`เจ้าลาออกจาก${name} กลับสู่วิถีจอมยุทธ์อิสระ`,'travel');return;
  }
  if(i!==s.place)return;
+ if(['talk','gift','spar'].includes(type)&&s.site!=='yard')return;
  if(type==='join'){
   if(s.sect!==null||s.power<10||s.money<15)return;
   s.sect=i;s.money-=15;s.merit=0;finish(`เจ้าฝากตัวเป็นศิษย์${sect.name} จ่ายค่าบำรุง 15 เหรียญ และเริ่มต้นวิถีใหม่`,'join');return;
@@ -86,7 +89,7 @@ function social(type,i){
  let gain=0,text='';
  if(type==='talk'){gain=12;s.wisdom+=2;text=`เจ้าสนทนากับ${sect.master} แลกเปลี่ยนเรื่องราวยุทธภพ ปัญญา +2`;}
  if(type==='gift'){if(s.money<15)return;s.money-=15;gain=22;text=`เจ้ามอบของขวัญให้${sect.master} ใช้เงิน 15 เหรียญ`;}
- if(type==='spar'){if(s.bonds[i]<20)return;gain=8;s.exp+=15;s.power+=2;s.hp-=5;text=`เจ้าประลองกับ${sect.master} อย่างมิตร ได้ค่าฝึกฝน 15 พลังยุทธ์ +2 พลังชีวิต -5`;}
+ if(type==='spar'){if(s.bonds[i]<20||s.site!=='yard')return;gain=8;s.exp+=15;s.power+=2;s.hp-=5;text=`เจ้าประลองกับ${sect.master} อย่างมิตร ได้ค่าฝึกฝน 15 พลังยุทธ์ +2 พลังชีวิต -5`;}
  if(!gain)return;
  s.bonds[i]=Math.min(100,s.bonds[i]+gain);
  if(s.bonds[i]>=50){s.hp=Math.min(100,s.hp+5);text+=' · สหายช่วยดูแล ฟื้นพลังชีวิต 5';}
@@ -96,7 +99,7 @@ function renderSocial(){
  const i=s.place,sect=sects[i],bond=s.bonds[i];
  $('position').innerHTML=s.sect===null?'<h3>จอมยุทธ์อิสระ</h3><p>ยังไม่มีตำแหน่ง · เดินทางไปยังสำนักที่ต้องการและฝากตัวเป็นศิษย์</p>':`<small>${sects[s.sect].name}</small><h3>ตำแหน่ง: ${sectRanks[rank()]}</h3><p>ผลงานสะสม ${s.merit} · ${rank()<3?`อีก ${(rank()+1)*30-s.merit} ผลงาน จะเลื่อนเป็น${sectRanks[rank()+1]}`:'บรรลุตำแหน่งสูงสุดแล้ว'}</p><div class="bar"><i style="width:${rank()===3?100:(s.merit%30)/30*100}%"></i></div><p>โบนัสประจำสำนักเพิ่มจากพื้นฐาน ${rank()*2} หน่วย · รางวัลภารกิจ ${20+rank()*5} เหรียญ</p>`;
  $('sects').innerHTML=sects.map((t,n)=>`<article class="social-card ${s.sect===n?'member':''}"><small>${places[n].dir}${n===i?' · อยู่ในพื้นที่':''}</small><h3>${t.name}</h3><p>${t.desc}</p><p class="benefit">${t.bonus}</p>${s.sect===n?`<strong>${sectRanks[rank()]} · ผลงาน ${s.merit}</strong><small>เลื่อนยศทุก 30 ผลงาน · สูงสุดผู้อาวุโส</small><button data-social="mission" data-person="${n}" ${s.dead||i!==n?'disabled':''}>ทำภารกิจ · 1 ปี</button><button data-social="leave" data-person="${n}" ${s.dead?'disabled':''}>ออกจากสำนัก · 1 ปี</button>`:`<button data-social="join" data-person="${n}" ${s.dead||s.sect!==null||i!==n||s.power<10||s.money<15?'disabled':''}>ฝากตัวเป็นศิษย์ · 1 ปี</button><small>ต้องอยู่ในพื้นที่ · พลังยุทธ์ 10 · เงิน 15</small>`}</article>`).join('');
- $('relations').innerHTML=`<article class="social-card"><small>สหายประจำ${places[i].dir}</small><h3>${sect.master}</h3><p>${sect.role}</p><strong>${bondLabel(bond)} · ${bond}/100</strong><div class="bar"><i style="width:${bond}%"></i></div><p>สนิท 20: ประลองร่วมกัน · สนิท 50: ฟื้นชีวิต 5 หลังพบปะ</p><div class="social-buttons"><button data-social="talk" data-person="${i}" ${s.dead?'disabled':''}>พูดคุย · ปัญญา +2</button><button data-social="gift" data-person="${i}" ${s.dead||s.money<15?'disabled':''}>ให้ของขวัญ · 15 เหรียญ</button><button data-social="spar" data-person="${i}" ${s.dead||bond<20?'disabled':''}>ประลองฉันมิตร</button></div><small>ทุกการพบปะใช้เวลา 1 ปี · เดินทางเพื่อพบสหายอีกสามคน</small></article><div class="bond-list">${sects.map((t,n)=>`<p>${t.master} <span>${bondLabel(s.bonds[n])} · ${s.bonds[n]}/100</span></p>`).join('')}</div>`;
+ $('relations').innerHTML=`<article class="social-card"><small>สหายประจำ${places[i].dir}</small><h3>${sect.master}</h3><p>${sect.role} · ลานฝึกยุทธ์</p><button data-visit="${i}-0" ${s.dead?'disabled':''}>ไปพบที่ลานฝึก · ไม่เสียปี</button><strong>${bondLabel(bond)} · ${bond}/100</strong><div class="bar"><i style="width:${bond}%"></i></div><p>สนิท 20: ประลองร่วมกัน · สนิท 50: ฟื้นชีวิต 5 หลังพบปะ</p><div class="social-buttons"><button data-social="talk" data-person="${i}" ${s.dead||s.site!=='yard'?'disabled':''}>พูดคุย · ปัญญา +2</button><button data-social="gift" data-person="${i}" ${s.dead||s.money<15||s.site!=='yard'?'disabled':''}>ให้ของขวัญ · 15 เหรียญ</button><button data-social="spar" data-person="${i}" ${s.dead||bond<20||s.site!=='yard'?'disabled':''}>ประลองฉันมิตร</button></div><small>ทุกการพบปะใช้เวลา 1 ปี · เดินทางเพื่อพบสหายอีกสามคน</small></article><div class="bond-list">${sects.map((t,n)=>`<p>${t.master} <span>${bondLabel(s.bonds[n])} · ${s.bonds[n]}/100</span></p>`).join('')}</div>`;
 }
 function itemAction(type,id){
  if(s.dead||!Object.hasOwn(items,id))return;
@@ -117,6 +120,8 @@ function renderCategory(){
  for(const id of ['daily','journey','sect','friends','bag'])$('panel-'+id).hidden=id!==category;
  for(const button of $('categories').querySelectorAll('[data-category]'))button.setAttribute('aria-pressed',String(button.dataset.category===category));
 }
+for(const id of ['local-map','sect-map'])$(id).addEventListener('click',handleLocalMap);
+for(const id of ['disciples','relations'])$(id).addEventListener('click',e=>{const b=e.target.closest('[data-visit]');if(b&&!b.disabled)visitNpc(b.dataset.visit);});
 $('weapons').addEventListener('click',e=>{const b=e.target.closest('[data-weapon]');if(b&&!b.disabled)weaponAction(b.dataset.weaponAction,b.dataset.weapon);});
 $('disciples').addEventListener('click',e=>{const b=e.target.closest('[data-duel]');if(b&&!b.disabled)duel(b.dataset.duel,b.dataset.mode);});
 $('categories').addEventListener('click',e=>{const b=e.target.closest('[data-category]');if(b){category=b.dataset.category;renderCategory();}});
